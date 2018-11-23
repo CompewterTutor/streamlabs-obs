@@ -1,4 +1,3 @@
-
 import * as obs from '../../../obs-api';
 import { Subscription } from 'rxjs/Subscription';
 import { TObsFormData } from 'components/obs/inputs/ObsInput';
@@ -22,7 +21,6 @@ export interface IAudioSource {
   mixerHidden: boolean;
 }
 
-
 export interface IAudioSourceApi extends IAudioSource {
   setDeflection(deflection: number): void;
   setMul(mul: number): void;
@@ -32,7 +30,6 @@ export interface IAudioSourceApi extends IAudioSource {
   setSettings(patch: Partial<IAudioSource>): void;
   getModel(): IAudioSource & ISource;
 }
-
 
 export interface IAudioServiceApi {
   getDevices(): IDevice[];
