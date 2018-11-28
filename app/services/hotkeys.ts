@@ -31,8 +31,13 @@ const isGameCapture = (sceneItemId: string) => {
   return sceneItem ? sceneItem.type === 'game_capture' : false;
 };
 
-const processObsHotkey = (itemId: string, hotkeyId: number): void => {
-  obs.NodeObs.OBS_API_ProcessHotkeyStatus(hotkeyId, true);
+/**
+ * Process a hotkey by sending it directly to OBS backend
+ *
+ * @param isKeyDown Whether the key was pressed or released
+ */
+const processObsHotkey = (isKeyDown: boolean) => (itemId: string, hotkeyId: number): void => {
+  obs.NodeObs.OBS_API_ProcessHotkeyStatus(hotkeyId, isKeyDown);
 };
 
 type THotkeyType = 'GENERAL' | 'SCENE' | 'SCENE_ITEM' | 'SOURCE';
@@ -199,15 +204,15 @@ const SCENE_ITEM_ACTIONS: HotkeyGroup = {
   HOTKEY_START: {
     name: 'HOTKEY_START',
     description: () => $t('Capture Foreground Window'),
-    down: processObsHotkey,
-    shouldApply: isGameCapture
+    down: processObsHotkey(true),
+    shouldApply: isGameCapture,
   },
   HOTKEY_STOP: {
     name: 'HOTKEY_STOP',
     description: () => $t('Deactivate Capture'),
-    down: processObsHotkey,
-    shouldApply: isGameCapture
-  }
+    down: processObsHotkey(true),
+    shouldApply: isGameCapture,
+  },
 };
 
 /**
