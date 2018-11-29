@@ -2,7 +2,11 @@ import * as fs from 'fs';
 import Vue from 'vue';
 import { Subject } from 'rxjs/Subject';
 import { cloneDeep } from 'lodash';
-import { IObsListOption, setupConfigurableDefaults, TObsValue } from 'components/obs/inputs/ObsInput';
+import {
+  IObsListOption,
+  setupConfigurableDefaults,
+  TObsValue,
+} from 'components/obs/inputs/ObsInput';
 import { StatefulService, mutation } from 'services/stateful-service';
 import * as obs from '../../../obs-api';
 import electron from 'electron';
@@ -266,7 +270,9 @@ export class SourcesService extends StatefulService<ISourcesState> implements IS
     // setup default settings
     if (type === 'browser_source') {
       if (resolvedSettings.shutdown === void 0) resolvedSettings.shutdown = true;
-      if (resolvedSettings.url === void 0) resolvedSettings.url = 'https://streamlabs.com/browser-source';
+      if (resolvedSettings.url === void 0) {
+        resolvedSettings.url = 'https://streamlabs.com/browser-source';
+      }
     }
 
     if (type === 'text_gdiplus') {
@@ -279,9 +285,10 @@ export class SourcesService extends StatefulService<ISourcesState> implements IS
       // resolve the device id by the device name here
       if (!['device_id', 'video_device_id', 'audio_device_id'].includes(propName)) return;
 
-      const device = type === 'dshow_input' ?
-        this.hardwareService.getDshowDeviceByName(settings[propName]) :
-        this.hardwareService.getDeviceByName(settings[propName]);
+      const device =
+        type === 'dshow_input'
+          ? this.hardwareService.getDshowDeviceByName(settings[propName])
+          : this.hardwareService.getDeviceByName(settings[propName]);
 
       if (!device) return;
       resolvedSettings[propName] = device.id;
