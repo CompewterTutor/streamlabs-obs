@@ -1,3 +1,4 @@
+import { fromNullable } from 'fp-ts/lib/Option';
 import { defer } from 'lodash';
 import { StreamingService } from 'services/streaming';
 import { ScenesService } from 'services/scenes';
@@ -17,13 +18,15 @@ const getStreamingService = (): StreamingService => StreamingService.instance;
 
 const getTransitionsService = (): TransitionsService => TransitionsService.instance;
 
-const isAudio = (sourceId: string) => getSourcesService().getSource(sourceId).audio;
+const isAudio = (sourceId: string) =>
+  fromNullable(getSourcesService().getSource(sourceId))
+    .map(s => s.audio)
+    .getOrElse(false);
 
-const isGameCapture = (sceneItemId: string) => {
-  const sceneItem = getScenesService().getSceneItem(sceneItemId);
-
-  return sceneItem ? sceneItem.type === 'game_capture' : false;
-};
+const isGameCapture = (sceneItemId: string) =>
+  fromNullable(getScenesService().getSceneItem(sceneItemId))
+    .map(s => s.type === 'game_capture')
+    .getOrElse(false);
 
 /**
  * Process a hotkey by sending it directly to OBS backend
@@ -126,14 +129,14 @@ const GENERAL_ACTIONS: HotkeyGroup = {
 };
 
 const SOURCE_ACTIONS: HotkeyGroup = {
-  MUTE: {
+  TOGGLE_MUTE: {
     name: 'TOGGLE_MUTE',
     description: () => $t('Mute'),
     down: sourceId => getSourcesService().setMuted(sourceId, true),
     isActive: sourceId => getSourcesService().getSource(sourceId).muted,
     shouldApply: isAudio,
   },
-  UNMUTE: {
+  TOGGLE_UNMUTE: {
     name: 'TOGGLE_UNMUTE',
     description: () => $t('Unmute'),
     down: sourceId => getSourcesService().setMuted(sourceId, false),
@@ -290,15 +293,20 @@ export class HotkeysService extends StatefulService<IHotkeysServiceState> {
 
   private updateRegisteredHotkeys() {
     const hotkeys: IHotkey[] = [];
+    /*
+     * Since we're hybrid at this point, track already-added hotkeys so OBS
+     * hotkeys don't duplicate them
+     */
+    const addedHotkeys = new Set<string>();
 
     Object.values(GENERAL_ACTIONS).forEach(action => {
       hotkeys.push({
         actionName: action.name,
         bindings: [],
       });
+      addedHotkeys.add(action.name);
     });
 
-    // TODO: remove these loops once we figure out why we're getting dup keys
     this.scenesService.scenes.forEach(scene => {
       Object.values(SCENE_ACTIONS).forEach(action => {
         hotkeys.push({
@@ -306,6 +314,7 @@ export class HotkeysService extends StatefulService<IHotkeysServiceState> {
           bindings: [],
           sceneId: scene.id,
         });
+        addedHotkeys.add(`${action.name}-${scene.id}`);
       });
 
       scene.getItems().forEach(sceneItem => {
@@ -313,8 +322,9 @@ export class HotkeysService extends StatefulService<IHotkeysServiceState> {
           hotkeys.push({
             actionName: action.name,
             bindings: [],
-            sceneItemId: sceneItem.id,
+            sceneItemId: sceneItem.sceneItemId,
           });
+          addedHotkeys.add(`${action.name}-${sceneItem.sceneItemId}`);
         });
       });
     });
@@ -322,12 +332,22 @@ export class HotkeysService extends StatefulService<IHotkeysServiceState> {
     const obsHotkeys: OBSHotkey[] = obs.NodeObs.OBS_API_QueryHotkeys();
 
     obsHotkeys.filter(isSupportedHotkey).forEach(hotkey => {
-      hotkeys.push({
-        [idPropFor(hotkey)]: hotkey.ObjectName,
-        actionName: normalizeActionName(hotkey.HotkeyName),
-        bindings: [] as IBinding[],
-        hotkeyId: hotkey.HotkeyId,
-      });
+      const action = getActionFromName(hotkey.HotkeyName);
+      if (!action) {
+        return;
+      }
+
+      const key = `${action.name}-${hotkey.ObjectName}`;
+
+      if (!addedHotkeys.has(key)) {
+        hotkeys.push({
+          [idPropFor(hotkey)]: hotkey.ObjectName,
+          actionName: action.name,
+          bindings: [] as IBinding[],
+          hotkeyId: hotkey.HotkeyId,
+        });
+        addedHotkeys.add(key);
+      }
     });
 
     // Set up bindings from saved hotkeys
@@ -393,9 +413,7 @@ export class HotkeysService extends StatefulService<IHotkeysServiceState> {
     const hotkeys: IHotkey[] = [];
     hotkeys.push(...hotkeySet.general);
     Object.keys(hotkeySet.scenes).forEach(sceneId => hotkeys.push(...hotkeySet.scenes[sceneId]));
-    Object.keys(hotkeySet.sources).forEach(sourceId =>
-      hotkeys.push(...hotkeySet.sources[sourceId]),
-    );
+    Object.keys(hotkeySet.sources).forEach(sourceId => hotkeys.push(...hotkeySet.sources[sourceId]));
     this.setHotkeys(hotkeys);
     this.bindHotkeys();
   }
@@ -577,7 +595,7 @@ export class Hotkey implements IHotkey {
     }
 
     if (down) {
-      action.downHandler = (hotkey: IHotkey) => {
+      action.downHandler = () => {
         if (!action.isActive(entityId)) {
           defer(() => down(entityId, this.hotkeyModel.hotkeyId));
         }
@@ -592,30 +610,31 @@ const getMigrationMapping = (actionName: string) => {
   return {
     MUTE: 'TOGGLE_MUTE',
     UNMUTE: 'TOGGLE_UNMUTE',
-    SHOW_SCENE_ITEM: 'TOGGLE_SOURCE_VISIBILITY_SHOW',
-    HIDE_SCENE_ITEM: 'TOGGLE_SOURCE_VISIBILITY_HIDE',
   }[normalizeActionName(actionName)];
 };
 
 const getActionFromName = (actionName: string) => {
-  return ACTIONS[actionName] || getMigrationMapping(actionName);
+  return ACTIONS[actionName] || ACTIONS[getMigrationMapping(actionName)];
 };
 
 const isSupportedHotkey = (hotkey: OBSHotkey) =>
-  hotkey.ObjectType === obs.EHotkeyObjectType.Source && getActionFromName(hotkey.HotkeyName);
+  hotkey.ObjectType === obs.EHotkeyObjectType.Source && getActionFromName(hotkey.HotkeyName) && idPropFor(hotkey);
 
-const isSceneItem = (hotkey: OBSHotkey) =>
-  !!hotkey.HotkeyName.match(/^(SHOW|HIDE)_SCENE_ITEM.(.+)$/);
+const isSceneItem = (hotkey: OBSHotkey) => !!getScenesService().getSceneItem(hotkey.ObjectName);
 
-const isSource = (hotkey: OBSHotkey) => !!hotkey.ObjectName.match(/(source|input|output)/);
+const isSource = (hotkey: OBSHotkey) => !!getSourcesService().getSource(hotkey.ObjectName);
+
+const isScene = (hotkey: OBSHotkey) => !!getScenesService().getScene(hotkey.ObjectName);
 
 const idPropFor = (hotkey: OBSHotkey) => {
   if (isSource(hotkey)) {
     return 'sourceId';
+  } else if (isScene(hotkey)) {
+    return 'sceneId';
   } else if (isSceneItem(hotkey)) {
     return 'sceneItemId';
   } else {
-    return 'sceneId';
+    return null;
   }
 };
 
