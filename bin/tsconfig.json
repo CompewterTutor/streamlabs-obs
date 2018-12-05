@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "lib": [ "ES6" ]
+  },
+  "files": [
+    "release.ts"
+  ],
+  "typeRoots": [
+    "./node_modules/@types"
+  ],
+  "types": []
+}

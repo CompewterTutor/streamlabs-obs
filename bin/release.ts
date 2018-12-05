@@ -1,18 +1,6 @@
 /*
  * All-in-one interactive Streamlabs OBS release script.
  */
-
-const sh = require('shelljs');
-const inq = require('inquirer');
-const semver = require('semver');
-const colors = require('colors/safe');
-const fs = require('fs');
-const path = require('path');
-const AWS = require('aws-sdk');
-const ProgressBar = require('progress');
-const yml = require('js-yaml');
-const cp = require('child_process');
-
 /**
  * CONFIGURATION
  */
@@ -20,16 +8,15 @@ const s3Buckets = [ 'streamlabs-obs', 'slobs-cdn.streamlabs.com' ];
 const sentryOrg = 'streamlabs-obs';
 const sentryProject = 'streamlabs-obs';
 
-
-function info(msg) {
+function info(msg: string) {
   sh.echo(colors.magenta(msg));
 }
 
-function error(msg) {
+function error(msg: string) {
   sh.echo(colors.red(`ERROR: ${msg}`));
 }
 
-function executeCmd(cmd, exit = true) {
+function executeCmd(cmd: string, exit?: boolean = true) {
   const result = sh.exec(cmd);
 
   if (result.code !== 0) {
